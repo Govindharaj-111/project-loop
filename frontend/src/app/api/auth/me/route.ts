@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBackendUrl } from "@/lib/config";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
+  const backendUrl = getBackendUrl();
+  if (!backendUrl) {
+    return NextResponse.json(
+      { error: "BACKEND_URL is not configured" },
+      { status: 500 }
+    );
+  }
+
   try {
-    const backendUrl = getBackendUrl();
     const backendRes = await fetch(`${backendUrl}/api/auth/me`, {
       method: "GET",
       headers: {
@@ -11,6 +20,7 @@ export async function GET(req: NextRequest) {
         cookie: req.headers.get("cookie") || "",
         authorization: req.headers.get("authorization") || "",
       },
+      cache: "no-store",
     });
 
     const rawText = await backendRes.text();
@@ -20,12 +30,16 @@ export async function GET(req: NextRequest) {
       try {
         data = JSON.parse(rawText);
       } catch {
-        data = { error: "Unauthorized" };
+        data = { error: rawText.trim() || `Backend returned status ${backendRes.status}` };
       }
     }
 
     return NextResponse.json(data, { status: backendRes.status });
   } catch (error: any) {
-    return NextResponse.json({ error: "Backend API unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: `Backend API server is unreachable at ${backendUrl}. Cause: ${error?.message || "Connection refused"}` },
+      { status: 503 }
+    );
   }
 }
+

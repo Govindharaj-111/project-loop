@@ -12,6 +12,7 @@
     "db:push": "node scripts/prepare-schema.js && prisma db push",
     "db:seed": "node scripts/prepare-schema.js && tsx prisma/seed.ts",
     "db:setup": "node scripts/prepare-schema.js && prisma generate && prisma db push && tsx prisma/seed.ts",
+    "db:check": "node scripts/prepare-schema.js && node scripts/check-db.js",
     "test": "tsx tests/master_security.test.ts",
     "test:phase1": "tsx tests/phase1.test.ts",
     "test:phase2": "tsx tests/phase2.test.ts",
