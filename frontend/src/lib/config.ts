@@ -1,9 +1,8 @@
 /**
  * Helper utility to resolve the configured Backend API base URL.
- * Only uses localhost:5000 as a fallback during local development (NODE_ENV === "development").
- * In production, requires process.env.BACKEND_URL or NEXT_PUBLIC_BACKEND_URL to be set.
+ * Defaults to http://127.0.0.1:5000 during local development/start or whenever no external URL is specified.
  */
-export function getBackendUrl(): string | null {
+export function getBackendUrl(): string {
   const rawUrl =
     process.env.BACKEND_URL ||
     process.env.NEXT_PUBLIC_BACKEND_URL ||
@@ -14,13 +13,11 @@ export function getBackendUrl(): string | null {
     return rawUrl.trim().replace(/\/+$/, "");
   }
 
-  if (process.env.NODE_ENV === "development") {
-    return "http://127.0.0.1:5000";
-  }
-
-  return null;
+  // Safe fallback to local Express API backend server (port 5000)
+  return "http://127.0.0.1:5000";
 }
 
 export function isBackendUrlConfigured(): boolean {
-  return getBackendUrl() !== null;
+  return true;
 }
+

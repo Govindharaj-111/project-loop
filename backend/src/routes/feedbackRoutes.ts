@@ -17,11 +17,12 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     const sentiment = (req.query.sentiment as string) || undefined;
     const status = (req.query.status as string) || undefined;
     const channel = (req.query.channel as string) || undefined;
+    const theme = (req.query.theme as string) || (req.query.themeId as string) || undefined;
     const dateFrom = (req.query.dateFrom as string) || undefined;
     const dateTo = (req.query.dateTo as string) || undefined;
 
     const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    const limit = parseInt((req.query.limit as string) || "50", 10);
     const skip = (page - 1) * limit;
 
     const whereClause: any = {
@@ -39,6 +40,17 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     if (sentiment) whereClause.sentiment = sentiment;
     if (status) whereClause.status = status;
     if (channel) whereClause.channel = channel;
+
+    if (theme) {
+      whereClause.themes = {
+        some: {
+          OR: [
+            { themeId: theme },
+            { theme: { name: { contains: theme } } },
+          ],
+        },
+      };
+    }
 
     if (dateFrom || dateTo) {
       whereClause.createdAt = {};
@@ -139,6 +151,12 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       },
     });
 
+    try {
+      await ensureFeedbackEmbedding(feedback.id, feedback.content);
+    } catch (embErr) {
+      console.warn("Could not generate embedding for new feedback:", embErr);
+    }
+
     res.status(201).json({
       feedback,
     });
@@ -194,6 +212,41 @@ router.post(
             rationale: classification.rationale,
           },
         });
+
+        // Link AI-classified themes to feedback in database
+        if (classification.themes && classification.themes.length > 0) {
+          for (const themeName of classification.themes) {
+            if (!themeName || !themeName.trim()) continue;
+            let theme = await prisma.theme.findFirst({
+              where: { workspaceId: session.workspaceId, name: themeName.trim() },
+            });
+            if (!theme) {
+              theme = await prisma.theme.create({
+                data: {
+                  name: themeName.trim(),
+                  description: `AI-identified theme: ${themeName.trim()}`,
+                  workspaceId: session.workspaceId,
+                },
+              });
+            }
+            await prisma.feedbackTheme.upsert({
+              where: {
+                feedbackId_themeId: {
+                  feedbackId: feedback.id,
+                  themeId: theme.id,
+                },
+              },
+              create: {
+                feedbackId: feedback.id,
+                themeId: theme.id,
+                confidence: 0.95,
+              },
+              update: {
+                confidence: 0.95,
+              },
+            });
+          }
+        }
 
         await ensureFeedbackEmbedding(
           feedback.id,
@@ -265,7 +318,21 @@ router.post(
     try {
       const session = await requireRole(["ADMIN", "ANALYST"], req);
 
-      const csvContent = req.body.csv || req.body.text;
+      let csvContent = req.body?.csv || req.body?.text || req.body?.content || req.body?.file;
+
+      // Handle raw string payload or multipart form data string
+      if (!csvContent && typeof req.body === "string" && req.body.trim()) {
+        const bodyStr = req.body.trim();
+        if (bodyStr.includes("Content-Disposition:")) {
+          const headerEnd = bodyStr.indexOf("\r\n\r\n");
+          const boundaryEnd = bodyStr.lastIndexOf("------");
+          if (headerEnd !== -1) {
+            csvContent = bodyStr.substring(headerEnd + 4, boundaryEnd !== -1 ? boundaryEnd : undefined).trim();
+          }
+        } else {
+          csvContent = bodyStr;
+        }
+      }
 
       if (!csvContent || typeof csvContent !== "string") {
         res.status(400).json({
@@ -301,6 +368,7 @@ router.post(
 
       res.json({
         message: `Successfully imported ${parseResult.validRows.length} feedback items`,
+        count: parseResult.validRows.length,
         importedCount: parseResult.validRows.length,
         failedCount: parseResult.failedRows.length,
         failedRows: parseResult.failedRows,
@@ -331,11 +399,19 @@ router.post(
     try {
       const session = await requireRole(["ADMIN", "ANALYST"], req);
 
-      const { channelType } = req.body;
+      const rawChannel = req.body?.channel || req.body?.channelType || "all";
+      let channelType = "all";
+      const normalized = String(rawChannel).toLowerCase();
+      if (normalized.includes("support")) channelType = "support";
+      else if (normalized.includes("review") || normalized.includes("app")) channelType = "app_reviews";
+      else if (normalized.includes("nps") || normalized.includes("survey")) channelType = "nps";
+      else if (normalized.includes("sale")) channelType = "sales";
+      else channelType = normalized;
 
-      const simulatedItems = getSimulatedFeed(
-        channelType || "all"
-      );
+      let simulatedItems = getSimulatedFeed(channelType);
+      if (req.body?.count && Number(req.body.count) > 0) {
+        simulatedItems = simulatedItems.slice(0, Number(req.body.count));
+      }
 
       const dataToInsert = simulatedItems.map((item) => ({
         content: item.content,
@@ -352,9 +428,10 @@ router.post(
       });
 
       res.json({
-        message:
-          "Simulated channel feed imported successfully",
+        message: "Simulated channel feed imported successfully",
+        count: dataToInsert.length,
         importedCount: dataToInsert.length,
+        channel: req.body?.channel || channelType,
       });
     } catch (error: any) {
       if (error.statusCode) {

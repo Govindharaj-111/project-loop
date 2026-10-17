@@ -75,7 +75,7 @@ export default function SimulatedIngestionModal({
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 <span>Simulated Ingestion Triggered</span>
               </div>
-              <p>Generated <strong>{result.count}</strong> realistic feedback records for <strong>{result.channel}</strong>.</p>
+              <p>Generated <strong>{result.count ?? result.importedCount ?? 0}</strong> realistic feedback records for <strong>{result.channel || "all channels"}</strong>.</p>
             </div>
 
             <div className="flex justify-end pt-2">

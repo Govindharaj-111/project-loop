@@ -40,12 +40,12 @@ export default function CsvImportModal({
     setError("");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const csvText = await file.text();
 
       const res = await fetch("/api/feedback/import", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csvText }),
       });
 
       const data = await res.json();
@@ -54,7 +54,10 @@ export default function CsvImportModal({
         throw new Error(data.error || "Failed to import CSV");
       }
 
-      setResult(data);
+      setResult({
+        ...data,
+        importedCount: data.importedCount ?? data.count ?? 0,
+      });
       onSuccess();
     } catch (err: any) {
       setError(err.message);

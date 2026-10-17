@@ -199,15 +199,16 @@ export default function FeedbackPage() {
     setImportingCsv(true);
     setCsvErrorMessage("");
     try {
-      const formData = new FormData();
-      formData.append("file", csvFile);
+      const csvText = await csvFile.text();
       const res = await fetch("/api/feedback/import", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csvText }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "CSV import failed");
-      setCsvSuccessMessage(`Successfully imported ${data.count || 0} customer feedback records!`);
+      const importedCount = data.importedCount ?? data.count ?? 0;
+      setCsvSuccessMessage(`Successfully imported ${importedCount} customer feedback records!`);
       setCsvFile(null);
       setCsvPreviewData([]);
       fetchFeedbacks();
