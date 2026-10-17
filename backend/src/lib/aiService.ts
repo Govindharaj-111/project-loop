@@ -16,6 +16,65 @@ export type ClassificationResult = z.infer<typeof ClassificationSchema>;
  * Validates AI response using Zod schema to ensure reliable output.
  */
 export async function classifyFeedbackText(content: string): Promise<ClassificationResult> {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  if (geminiKey && geminiKey !== "mock-key") {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": geminiKey,
+            "content-type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are an expert NLP classifier for customer feedback intelligence. Analyze this feedback and return ONLY a valid JSON object matching this exact structure:
+{
+  "sentiment": "Positive" | "Neutral" | "Negative",
+  "sentimentScore": number between -1.0 and 1.0,
+  "themes": [string],
+  "featureArea": string,
+  "rationale": string
+}
+
+Customer feedback to classify:
+"${content}"`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1,
+            },
+          }),
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (textContent) {
+          const rawJson = JSON.parse(textContent.trim());
+          return ClassificationSchema.parse(rawJson);
+        }
+      }
+    } catch (err) {
+      console.warn("Gemini classification API call failed or timed out. Checking secondary options...", err);
+    }
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (apiKey && apiKey !== "mock-key") {

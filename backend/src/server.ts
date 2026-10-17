@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -9,6 +12,41 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 import askRoutes from "./routes/askRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+
+// Helper to load .env files into process.env automatically
+function loadEnvIfPresent(filePath: string) {
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch {
+    // Ignore error reading env
+  }
+}
+
+try {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  loadEnvIfPresent(path.resolve(currentDir, "..", ".env"));
+  loadEnvIfPresent(path.resolve(currentDir, "..", "..", ".env"));
+  loadEnvIfPresent(path.resolve(process.cwd(), ".env"));
+  loadEnvIfPresent(path.resolve(process.cwd(), "backend", ".env"));
+} catch {
+  // Ignore
+}
 
 // Safety: Process-level error handlers to prevent silent crashes
 process.on("unhandledRejection", (reason, promise) => {

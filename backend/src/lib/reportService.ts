@@ -120,6 +120,65 @@ export async function generateVocReportContent(
     };
   }
 
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  if (geminiApiKey && geminiApiKey !== "mock-key") {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": geminiApiKey,
+            "content-type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are a Senior Customer Intelligence Analyst. Return ONLY valid JSON matching this exact structure:
+{
+  "executiveSummary": string,
+  "sentimentOverview": string,
+  "topCustomerThemes": [{"name": string, "summary": string, "count": number}],
+  "importantTrends": [string],
+  "representativeFeedback": [{"quote": string, "channel": string, "customer": string}],
+  "keyPainPoints": [string],
+  "recommendedActions": [string]
+}
+
+Use ONLY the provided verified stats: ${JSON.stringify(stats)}`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2,
+            },
+          }),
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (textContent) {
+          return JSON.parse(textContent.trim());
+        }
+      }
+    } catch (err) {
+      console.warn("Gemini report synthesis API error. Trying fallback...", err);
+    }
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (apiKey && apiKey !== "mock-key") {

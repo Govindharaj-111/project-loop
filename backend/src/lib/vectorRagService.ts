@@ -237,9 +237,64 @@ export async function askLoopRag(
         "Give me a Voice of Customer summary."
       ];
 
-  const answer = `Based on ${evidence.length} retrieved customer feedback records in your workspace:\n\n` +
+  let answer = `Based on ${evidence.length} retrieved customer feedback records in your workspace:\n\n` +
     evidence.map((e) => `• **${e.channel}** (${e.customerLabel || "Anonymous Customer"}): "${e.content}"`).join("\n\n") +
     `\n\n**Summary:** Customer verbatims confirm ${sentiment.toLowerCase()} signals regarding ${relatedThemes.join(" and ")}. Product teams should review cited evidence cards below for ground-truth verification.`;
+
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (geminiApiKey && geminiApiKey !== "mock-key") {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const geminiRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": geminiApiKey,
+            "content-type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are an AI Product Intelligence Assistant for Project LOOP.
+Question: "${question}"
+
+Evidence retrieved from database:
+${evidence.map((e, idx) => `[Evidence ${idx + 1}] (${e.channel}, ${e.customerLabel || "Customer"}): "${e.content}"`).join("\n")}
+
+Instructions:
+1. Provide an executive, direct answer grounded strictly in the evidence above.
+2. Clearly cite the evidence points where relevant.
+3. Keep it objective, professional, and actionable. Do not speculate or invent details not present in the customer verbatims.`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+            },
+          }),
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (geminiRes.ok) {
+        const geminiData = (await geminiRes.json()) as any;
+        const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text && text.trim()) {
+          answer = text.trim();
+        }
+      }
+    } catch (gErr) {
+      console.warn("Gemini RAG synthesis fallback used:", gErr);
+    }
+  }
 
   return {
     answer,
