@@ -1,10 +1,18 @@
-import { jwtVerify } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { JWTPayload, SessionUser } from "@/types";
 
 const JWT_SECRET = process.env.JWT_SECRET || "project-loop-super-secret-jwt-key-2026-secure";
 const SECRET_KEY = new TextEncoder().encode(JWT_SECRET);
-const COOKIE_NAME = "loop_session";
+export const COOKIE_NAME = "loop_session";
+
+export async function createToken(payload: Omit<JWTPayload, "iat" | "exp">): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(SECRET_KEY);
+}
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {

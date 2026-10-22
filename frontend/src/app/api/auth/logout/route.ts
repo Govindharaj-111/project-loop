@@ -24,15 +24,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response = NextResponse.json(data, { status: backendRes.status });
+    const response = NextResponse.json(data, { status: 200 });
+    response.cookies.delete("loop_session");
 
-    const setCookie = backendRes.headers.get("set-cookie");
+    const setCookie = backendRes?.headers?.get("set-cookie");
     if (setCookie) {
       response.headers.set("set-cookie", setCookie);
     }
 
     return response;
   } catch (error: any) {
-    return NextResponse.json({ message: "Logout processed" }, { status: 200 });
+    const response = NextResponse.json({ message: "Logout processed" }, { status: 200 });
+    response.cookies.delete("loop_session");
+    return response;
   }
 }
